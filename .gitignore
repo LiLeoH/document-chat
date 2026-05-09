@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+workspace/
+*.egg-info
+*.pdf
+*.md
+!README.md
+.DS_Store
+
+.pytest_cache
+
+# Virtual environments
+.venv
