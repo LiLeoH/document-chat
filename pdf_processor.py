@@ -175,9 +175,9 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
     使用 LangChain 从大模型获取结构化解析结果。
     """
     llm = ChatOpenAI(
-        model=os.environ.get("SUMMARY_MODEL", "qwen3.5-122b-a10b"),
-        api_key=os.environ.get("QIANFAN_API_KEY"),
-        base_url=os.environ.get("QIANFAN_BASE_URL", "https://qianfan.baidubce.com/v2"),
+        model=os.environ.get("SUMMARY_MODEL"),
+        api_key=os.environ.get("OPENAI_API_KEY"),
+        base_url=os.environ.get("OPENAI_BASE_URL"),
         temperature=0.1,
     )
 
@@ -257,6 +257,10 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
     structured_llm = llm.with_structured_output(DocumentMetadata)
     chain = prompt | structured_llm
 
+    # 确保 extra_info 是字符串
+    if extra_info is None:
+        extra_info = ""
+
     # 准备输入数据
     input_data = {
         "input": chunk,
@@ -267,7 +271,7 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
                 for item in extra_info.splitlines()
                 if item.strip()
             )
-            if extra_info and extra_info.strip()
+            if extra_info.strip()
             else ""
         ),
     }
@@ -281,6 +285,9 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
 
         # 执行 LLM 调用
         metadata_obj = await chain.ainvoke(input_data)
+
+        if metadata_obj is None:
+            raise ValueError("LLM 返回了空结果，解析失败。")
 
         # 转换为字典并添加原始文本
         result = metadata_obj.model_dump()

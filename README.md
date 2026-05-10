@@ -94,8 +94,9 @@ uv sync
 ### 2. 配置密钥与参数
 在 `.env` 文件中配置：
 ```ini
-# API 配置
-QIANFAN_API_KEY="您的 API Key"
+# API 配置（OpenAI 兼容接口）
+OPENAI_API_KEY="您的 API Key"
+OPENAI_BASE_URL="https://qianfan.baidubce.com/v2"
 
 # 模型配置
 CHAT_MODEL=qwen3.5-122b-a10b

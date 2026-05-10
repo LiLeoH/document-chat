@@ -7,9 +7,9 @@ import io
 import asyncio
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from milvus_operator import MilvusOperator
+from langchain.agents import create_agent
 
 
 # Cache for Milvus operators and agents per workspace
@@ -79,20 +79,24 @@ async def retrieve_context(
 
     # rerank
     reranker = get_reranker()
-    raw_rerank_results = await reranker.rerank(raw_query, context_parts)
+    if reranker:
+        raw_rerank_results = await reranker.rerank(raw_query, context_parts)
 
-    # Sort results by relevance_score and extract document content
-    sorted_results = sorted(
-        raw_rerank_results, key=lambda x: x["relevance_score"], reverse=True
-    )
-    rerank_results = [res["document"] for res in sorted_results]
+        # Sort results by relevance_score and extract document content
+        sorted_results = sorted(
+            raw_rerank_results, key=lambda x: x["relevance_score"], reverse=True
+        )
+        rerank_results = [res["document"] for res in sorted_results]
 
-    # Apply rerank limit
-    rerank_results = rerank_results[: int(os.environ.get("RERANK_LIMIT", 3))]
-    # 从rerank_results中每一个的内容的’<data_fragment source='chunk_2.md'>‘提取出source，再打印
-    for i, hit in enumerate(rerank_results):
-        source = hit.split("<data_fragment source=")[1].split(">")[0]
-        print(f"DEBUG: Rerank source {i}: {source}")
+        # Apply rerank limit
+        rerank_results = rerank_results[: int(os.environ.get("RERANK_LIMIT", 3))]
+        # 从rerank_results中每一个的内容的’<data_fragment source='chunk_2.md'>‘提取出source，再打印
+        for i, hit in enumerate(rerank_results):
+            source = hit.split("<data_fragment source=")[1].split(">")[0]
+            print(f"DEBUG: Rerank source {i}: {source}")
+    else:
+        print("DEBUG: No reranker configured, skipping rerank step.")
+        rerank_results = context_parts
 
     return "\n\n".join(rerank_results)
 
@@ -103,8 +107,8 @@ def get_agent_executor(workspace: str):
     """
     llm = ChatOpenAI(
         model=os.environ.get("CHAT_MODEL", "qwen3.5-122b-a10b"),
-        api_key=os.environ.get("QIANFAN_API_KEY"),
-        base_url=os.environ.get("QIANFAN_BASE_URL"),
+        api_key=os.environ.get("OPENAI_API_KEY"), # type: ignore
+        base_url=os.environ.get("OPENAI_BASE_URL"),
         temperature=0.5,
         extra_body={
             "thinking": {"type": "enabled"},
@@ -243,11 +247,11 @@ def get_agent_executor(workspace: str):
         f"{'\n\n --- \n\n'.join(frontmatter_list)}"
     )
     # Create the ReAct agent
-    agent_executor = create_react_agent(
+    agent_executor = create_agent(
         llm,
         tools=[search_documents, read_document_file, parse_markdown_table],
         checkpointer=memory,
-        prompt=prompt,
+        system_prompt=prompt,
     )
     print(f"DEBUG: Agent created with prompt: {prompt}")
     return agent_executor
@@ -288,10 +292,17 @@ async def rag_flow(query: str, workspace: str, thread_id: str = "default_session
                 print(
                     f"DEBUG: Agent stream response_metadata: {msg.response_metadata} usage_metadata: {msg.usage_metadata}"
                 )
-            if metadata.get("langgraph_node") == "agent":
+            if metadata.get("langgraph_node") == "model":
                 content = msg.content
-                if isinstance(content, str) and len(content.strip()) > 0:
+                if isinstance(content, str) and content:
                     yield content
+                elif isinstance(content, list):
+                    # Handle content blocks if necessary
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            yield block.get("text", "")
+                        elif isinstance(block, str):
+                            yield block
 
     except Exception as e:
         yield f"\nAgent Error: {str(e)}"
