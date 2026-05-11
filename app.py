@@ -236,9 +236,9 @@ def build_app():
                         )
                         extra_info_input = gr.Textbox(
                             label="补充提取关键信息（可选）",
-                            placeholder="每行一项，例如：\n变电站名称\n母线类型\n保护定值",
+                            placeholder="每行一项，例如：\n工程名称\n技术方案\n预算",
                             lines=4,
-                            info="这些关键词将动态注入到 LLM 提取 Prompt 中",
+                            info="这些关键词将动态注入到 LLM 中，优化对内容的提取",
                         )
                         upload_button = gr.Button(
                             "✨ 开始处理", variant="primary"

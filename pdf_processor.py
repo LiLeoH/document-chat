@@ -1,3 +1,4 @@
+import asyncio
 import json
 import yaml
 import pymupdf4llm
@@ -10,6 +11,7 @@ from typing import List, Dict
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from prompts import get_parse_document_prompt
 
 
 def pdf_to_markdown(pdf_path: str, output_md_path: str = None) -> tuple[str, str]:
@@ -170,7 +172,7 @@ class DocumentMetadata(BaseModel):
     )
 
 
-async def parse_document(chunk: str, extra_info: str = "") -> dict:
+async def parse_document(chunk: str, extra_info: str = "", retry_count: int = 3) -> dict:
     """
     使用 LangChain 从大模型获取结构化解析结果。
     """
@@ -179,109 +181,29 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
         api_key=os.environ.get("OPENAI_API_KEY"),
         base_url=os.environ.get("OPENAI_BASE_URL"),
         temperature=0.1,
+        streaming=True,
     )
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "你是一名电力工程设计专家。"),
-            (
-                "user",
-                """
-下面是一份电力工程设计说明书的部分片段，请分析该文档并**严格**按下面的json格式输出内容：
-
-# 输出格式
-```json
-{{"summary":"", "takeaways": [""], "concepts": [""], "entities":{{"$key":"$value"}}}}
-```
-
-## 字段说明
-`summary`为该文档的摘要内容，同时需要满足以下要求：
-- 不超过200字
-- 不需要有细节描述，但不能遗漏内容点
-
-`takeaways`为该文档的要点：
-- 如果有表格，需要包含表格内容的描述
-
-`concepts`为该文档中的抽象概念、主题等：
-- 抽取最重要的 3 ~ 8 个
-
-`entities`为该文档中的人、公司、地点、工具和其他具体实体：
-- 抽取最重要的 3 ~ 8 个
-- 其中`key`为该实体的类型，比如人物，公司，项目名等
-- 如果多项`key`相关，合并到一项中，用逗号分割
-
-# 其它约束条件
-要对所有字段内容做向量数据库入库专用描述，要求： 
-1. 仅保留对语义检索有价值的信息；
-2. 禁止自然语言叙述；
-3. 禁止完整句子；
-4. 使用短语、标签、术语枚举；
-5. 删除空话、套话、管理口号、流程性描述；
-6. 删除“提高效率”“安全可靠”“满足要求”等低信息密度内容；
-7. 优先保留：
-   * 电压等级
-   * 系统名称
-   * 设备名称
-   * 设备型号
-   * 专业术语
-   * 标准编号
-   * 通信协议
-   * 拓扑结构
-   * 功能逻辑
-   * 保护逻辑
-   * 故障类型
-   * 工程场景
-8. 可用补充：
-   * 项目名称
-   * 行业别名
-   * 常用简称
-   * 英文缩写
-   * 相关设备
-   * 上下游系统
-   * 关联专业
-{extra_info_block}
-9. 保持术语原貌不得改写。
-10. 输出高密度术语集合；
-11. 避免冗余重复；
-12. 所有内容仅服务向量检索召回。
-
----
-
-待解析的技术文档：
-{input}
-        """,
-            ),
-        ]
-    )
-
-    structured_llm = llm.with_structured_output(DocumentMetadata)
-    chain = prompt | structured_llm
 
     # 确保 extra_info 是字符串
     if extra_info is None:
         extra_info = ""
 
+    prompt = get_parse_document_prompt(extra_info)
+
+    structured_llm = llm.with_structured_output(DocumentMetadata)
+    chain = prompt | structured_llm
+
     # 准备输入数据
     input_data = {
         "input": chunk,
-        "extra_info_block": (
-            "\n"
-            + "\n".join(
-                f"   * {item.strip()}"
-                for item in extra_info.splitlines()
-                if item.strip()
-            )
-            if extra_info.strip()
-            else ""
-        ),
     }
 
     try:
         # 打印实际 Prompt
-        formatted_prompt = prompt.invoke(input_data)
-        print(
-            f"\n--- [DEBUG] Actual Prompt ---\n{formatted_prompt.to_string()}\n-----------------------------\n"
-        )
+        # formatted_prompt = prompt.invoke(input_data)
+        # print(
+        #     f"\n--- [DEBUG] Actual Prompt ---\n{formatted_prompt.to_string()}\n-----------------------------\n"
+        # )
 
         # 执行 LLM 调用
         metadata_obj = await chain.ainvoke(input_data)
@@ -294,7 +216,12 @@ async def parse_document(chunk: str, extra_info: str = "") -> dict:
         result["raw"] = chunk
         return result
     except Exception as e:
-        print(f"解析文档块出错: {e}")
+        if retry_count > 0:
+            print(f"解析文档块出错: {e}，1秒后重试 (剩余重试次数: {retry_count})...")
+            await asyncio.sleep(1)
+            return await parse_document(chunk, extra_info, retry_count - 1)
+        
+        print(f"解析文档块最终失败: {e}")
         # 出错时返回默认结构
         return {
             "summary": "解析失败",
@@ -316,8 +243,6 @@ def main():
         # 演示分割功能
         chunks = split_markdown_by_chapters(md_text, max_length=500)
         print(f"Document split into {len(chunks)} chunks.")
-
-        import asyncio
 
         async def _run_parse():
             tasks = [parse_document(c) for c in chunks]

@@ -77,9 +77,11 @@ graph TD
 
 - `app.py`: **[程序入口]** 具有会话管理以及**工作空间管理**功能的 Web 界面。
 - `main.py`: **[流水线控制器]** 串联 PDF 解析、并行向量化入库，并提供 `load_from_workspace` 接口用于快速恢复状态。
-- `pdf_processor.py`: 负责 PDF 转换、层级分块及 `raw.md` 生成，支持**动态变量填充**的 LLM 解析 Prompt。
+- `pdf_processor.py`: 负责 PDF 转换、层级分块及 `raw.md` 生成，使用 `prompts.py` 中的模板进行 LLM 解析。
 - `milvus_operator.py`: Milvus 向量库封装，支持三路召回。
-- `retrieve.py`: **[核心大脑]** 包含 Agent 构建逻辑、系统提示词注入及检索/读取/表格解析工具集。
+- `retrieve.py`: **[核心大脑]** 包含 Agent 构建逻辑，集成检索/读取/表格解析工具集，使用 `prompts.py` 动态构建提示词。
+- `prompts.py`: **[提示词中心]** 统一管理所有大模型 Prompt 模板，并封装了提示词的二次组装与预处理逻辑。
+
 
 ---
 
