@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from main import process_pdf_to_milvus, load_from_workspace
-from retrieve import rag_flow, reset_agent
+from retrieve import rag_flow, clear_history
 
 # Load environment variables from .env file
 load_dotenv()
@@ -124,10 +124,10 @@ async def bot(history, chunk_data_list):
         yield history
 
 
-def clear_chat(workspace_state):
+async def clear_chat(workspace_state):
     if workspace_state:
         workspace_dir, _ = workspace_state
-        reset_agent(str(workspace_dir))
+        await clear_history(str(workspace_dir))
     return []
 
 

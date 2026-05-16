@@ -1,3 +1,4 @@
+from milvus_operator import MilvusOperator
 from rerank import get_reranker
 import re
 from typing import List
@@ -227,6 +228,20 @@ def get_agent_executor(workspace: str):
     return agent_executor
 
 
+async def clear_history(workspace: str, thread_id: str = "default_session"):
+    """
+    Clear all conversation history for a workspace.
+    """
+    if workspace in _agents:
+        agent = _agents[workspace]
+        config = {"configurable": {"thread_id": thread_id}}
+        try:
+            await agent.aupdate_state(config, {"messages": []})
+            print(f"DEBUG: Cleared all history for workspace: {workspace}")
+        except Exception as e:
+            print(f"DEBUG: Failed to clear history: {e}")
+
+
 def reset_agent(workspace: str):
     """
     Reset the agent for a workspace, effectively clearing its memory.
@@ -234,6 +249,27 @@ def reset_agent(workspace: str):
     if workspace in _agents:
         print(f"Resetting agent for workspace: {workspace}")
         del _agents[workspace]
+
+
+MAX_HISTORY_ROUNDS = 10
+
+
+async def trim_history(agent, config: dict, max_rounds: int = MAX_HISTORY_ROUNDS):
+    """
+    Trim conversation history to keep only the most recent N rounds.
+    Each round consists of a user message and an assistant response.
+    """
+    try:
+        state = await agent.aget_state(config)
+        messages = state.values.get("messages", [])
+        
+        max_messages = max_rounds * 2
+        if len(messages) > max_messages:
+            trimmed_messages = messages[-max_messages:]
+            await agent.aupdate_state(config, {"messages": trimmed_messages})
+            print(f"DEBUG: Trimmed history from {len(messages)} to {len(trimmed_messages)} messages")
+    except Exception as e:
+        print(f"DEBUG: Failed to trim history: {e}")
 
 
 async def rag_flow(query: str, workspace: str, thread_id: str = "default_session"):
@@ -246,11 +282,11 @@ async def rag_flow(query: str, workspace: str, thread_id: str = "default_session
 
     agent = _agents[workspace]
 
-    # Configuration for memory (persistence)
     config = {"configurable": {"thread_id": thread_id}}
 
+    await trim_history(agent, config)
+
     try:
-        # Run the agent asynchronously
         print(f"Agent processing query: {query}")
 
         async for msg, metadata in agent.astream(

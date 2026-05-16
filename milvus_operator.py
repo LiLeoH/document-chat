@@ -31,7 +31,7 @@ class MilvusOperator:
 
         remote_uri = os.environ.get("MILVUS_URI")
         if remote_uri:
-            self.client = MilvusClient(uri="remote_uri")
+            self.client = MilvusClient(uri=remote_uri)
         else:
             self.client = MilvusClient(self.db_path)
         self.embedder = get_embedder()
@@ -291,16 +291,16 @@ async def test_main():
     parsed = parse_document(mock_chunk)
 
     # Inject mock data since the default is empty
-    parsed["summary"] = "This is a brief summary of the mock document."
-    parsed["takeaways"] = [
+    parsed["summary"] = "This is a brief summary of the mock document." # type: ignore
+    parsed["takeaways"] = [ # type: ignore
         "Takeaway 1: Milvus is fast",
         "Takeaway 2: Multi-vector rocks",
     ]
-    parsed["concepts"] = ["Vector Database", "Embedding"]
-    parsed["entities"] = {"Database": "Milvus", "Company": "Zilliz"}
-    parsed["source"] = "mock_chunk.md"
+    parsed["concepts"] = ["Vector Database", "Embedding"] # type: ignore
+    parsed["entities"] = {"Database": "Milvus", "Company": "Zilliz"} # type: ignore
+    parsed["source"] = "mock_chunk.md" # type: ignore
 
-    res = await op.insert_chunk(parsed)
+    res = await op.insert_chunk(parsed) # type: ignore
     print(f"Inserted 1 record. ID: {res}")
 
     print("\n--- Testing Search (Combined Dense) ---")

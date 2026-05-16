@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from prompts import get_parse_document_prompt
 
 
-def pdf_to_markdown(pdf_path: str, output_md_path: str = None) -> tuple[str, str]:
+def pdf_to_markdown(pdf_path: str, output_md_path: str | None = None) -> tuple[str, str]:
     """
     Reads a PDF file and converts it to Markdown format.
 
